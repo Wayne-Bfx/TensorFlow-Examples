@@ -12,6 +12,23 @@ Links:
 
 Author: Aymeric Damien
 Project: https://github.com/aymericdamien/TensorFlow-Examples/
+
+步骤：
+1、自定义neural_net神经网络
+2、定义模型函数model_fn：
+   a、获取输出层结果
+   b、求 pred_classes = tf.argmax(logits, axis=1)
+         pred_probas = tf.nn.softmax(logits)
+   c、返回估算器对象实例（包括损失函数、优化方式、准确率函数）
+      tf.estimator.EstimatorSpec(mode=mode,
+                                 predictions=pred_classes,
+                                 loss=loss_op,
+                                 train_op=train_op,
+                                 eval_metric_ops={'accuracy': acc_op})
+3、构建估算器 model = tf.estimator.Estimator(model_fn)
+4、定义训练用的输入函数  input_fn = tf.estimator.inputs.numpy_input_fn
+5、训练  model.train(input_fn, steps=num_steps)
+6、评估  model.evaluate(input_fn)
 """
 
 from __future__ import print_function
@@ -54,14 +71,22 @@ def model_fn(features, labels, mode):
     logits = neural_net(features)
 
     # Predictions
-    pred_classes = tf.argmax(logits, axis=1)
-    pred_probas = tf.nn.softmax(logits)
+    pred_classes = tf.argmax(logits, axis=1) # 根据axis取值的不同返回每行或者每列最大值的索引
+    pred_probas = tf.nn.softmax(logits)      # 输出logits中最大概率的值
 
     # If prediction mode, early return
     if mode == tf.estimator.ModeKeys.PREDICT:
         return tf.estimator.EstimatorSpec(mode, predictions=pred_classes)
 
     # Define loss and optimizer
+    # tf.nn.sparse_softmax_cross_entropy_with_logits函数是将softmax和cross_entropy放在一起计算，
+    # 对于分类问题而言，最后一般都是一个单层全连接神经网络，
+    # 比如softmax分类器居多，对这个函数而言，tensorflow神经网络中是没有softmax层，而是在这个函数中
+    # 进行softmax函数的计算。
+    # 这里的logits通常是最后的全连接层的输出结果，labels是具体哪一类的标签，
+    # 这个函数是直接使用标签数据的，而不是采用one-hot编码形式。
+    # tf.cast 转换数据类型
+    # 计算张量tensor沿着指定的数轴（tensor的某一维度）上的的平均值
     loss_op = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
         logits=logits, labels=tf.cast(labels, dtype=tf.int32)))
     optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
@@ -69,7 +94,7 @@ def model_fn(features, labels, mode):
                                   global_step=tf.train.get_global_step())
 
     # Evaluate the accuracy of the model
-    acc_op = tf.metrics.accuracy(labels=labels, predictions=pred_classes)
+    acc_op = tf.metrics.accuracy(labels=labels, predictions=pred_classes) # 计算模型输出的准确率
 
     # TF Estimators requires to return a EstimatorSpec, that specify
     # the different ops for training, evaluating, ...
